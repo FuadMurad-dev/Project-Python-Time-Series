@@ -1,7 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from pmdarima import auto_arima
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.seasonal import seasonal_decompose
 
 # =============================================================================
@@ -20,7 +20,7 @@ df = df.sort_index()
 df = df.asfreq('MS')
 
 print("=" * 60)
-print("ANÁLISE COM MODELO ARIMA")
+print("ANÁLISE COM MODELO HOLT-WINTERS")
 print("=" * 60)
 
 print("RESUMO DOS DADOS:")
@@ -87,31 +87,26 @@ print(f"Treino: {conjunto_treinamento.index[0].strftime('%m/%Y')} até {conjunto
 print(f"Teste:  {conjunto_teste.index[0].strftime('%m/%Y')} até {conjunto_teste.index[-1].strftime('%m/%Y')} ({len(conjunto_teste)} meses)")
 
 # =============================================================================
-# MODELO ARIMA
+# MODELO HOLT-WINTERS
 # =============================================================================
 
-print("\nAJUSTANDO AUTO_ARIMA...")
+print("\nAJUSTANDO HOLT-WINTERS...")
 
-model_arima = auto_arima(
-    y=conjunto_treinamento['Valor'],
-    m=12,
-    seasonal=True,
-    stepwise=True,
-    suppress_warnings=True,
-    trace=True
-)
+model_hw = ExponentialSmoothing(
+    endog=conjunto_treinamento['Valor'],
+    trend='add',
+    seasonal='add',
+    seasonal_periods=12
+).fit()
 
-print("\nMELHOR MODELO ARIMA ENCONTRADO:")
-print(model_arima)
+print("\nMODELO HOLT-WINTERS AJUSTADO:")
+print(f"Parâmetros: Trend='add', Seasonal='add', Periods=12")
 
 # Previsões para o período de teste
-forecasting_arima = pd.Series(
-    model_arima.predict(n_periods=len(conjunto_teste)),
-    index=conjunto_teste.index
-)
+forecasting_hw = model_hw.forecast(steps=len(conjunto_teste))
 
 # =============================================================================
-# VISUALIZAÇÃO ARIMA
+# VISUALIZAÇÃO HOLT-WINTERS
 # =============================================================================
 
 plt.figure(figsize=(14, 8))
@@ -130,16 +125,16 @@ conjunto_teste['Valor'].plot(
     color='green'
 )
 
-# Previsões ARIMA
-forecasting_arima.plot(
+# Previsões Holt-Winters
+forecasting_hw.plot(
     linewidth=2,
-    label=f'Previsão ARIMA {model_arima.order}',
-    color='red',
+    label='Previsão Holt-Winters',
+    color='orange',
     linestyle='--',
     marker='o'
 )
 
-plt.title('Transações Correntes - Previsão com ARIMA', fontsize=14, fontweight='bold')
+plt.title('Transações Correntes - Previsão com Holt-Winters', fontsize=14, fontweight='bold')
 plt.xlabel('Data')
 plt.ylabel('US$ milhões')
 plt.legend()
@@ -147,49 +142,48 @@ plt.grid(True, alpha=0.3)
 plt.show()
 
 # =============================================================================
-# MÉTRICAS ARIMA
+# MÉTRICAS HOLT-WINTERS
 # =============================================================================
 
 def MAPE(y_true, y_pred):
     y_true, y_pred = np.array(y_true), np.array(y_pred)
     return np.mean(np.abs((y_true - y_pred) / np.abs(y_true))) * 100
 
-mape_arima = MAPE(conjunto_teste['Valor'], forecasting_arima)
+mape_hw = MAPE(conjunto_teste['Valor'], forecasting_hw)
 
-print(f"\nPRECISÃO DO MODELO ARIMA:")
-print(f"MAPE: {mape_arima:.2f}%")
+print(f"\nPRECISÃO DO MODELO HOLT-WINTERS:")
+print(f"MAPE: {mape_hw:.2f}%")
 
 # =============================================================================
-# PREVISÃO FUTURA COM ARIMA
+# PREVISÃO FUTURA COM HOLT-WINTERS
 # =============================================================================
 
-print(f"\nPREVISÃO PARA OS PRÓXIMOS 12 MESES (ARIMA):")
+print(f"\nPREVISÃO PARA OS PRÓXIMOS 12 MESES (HOLT-WINTERS):")
 
 # Modelo final com todos os dados
-model_final = auto_arima(
-    y=df['Valor'],
-    m=12,
-    seasonal=True,
-    stepwise=True,
-    suppress_warnings=True
-)
+model_final_hw = ExponentialSmoothing(
+    endog=df['Valor'],
+    trend='add',
+    seasonal='add',
+    seasonal_periods=12
+).fit()
 
-future_forecast = model_final.predict(n_periods=12)
+future_forecast_hw = model_final_hw.forecast(steps=12)
 future_dates = pd.date_range(
     start=df.index[-1] + pd.DateOffset(months=1),
     periods=12,
     freq='MS'
 )
 
-future_forecast_series = pd.Series(future_forecast, index=future_dates)
+future_forecast_series_hw = pd.Series(future_forecast_hw, index=future_dates)
 
 print("=" * 50)
-for date, value in future_forecast_series.items():
+for date, value in future_forecast_series_hw.items():
     trend = "CRESCENTE" if value > 0 else "DECRESCENTE"
     print(f"{trend} {date.strftime('%m/%Y')}: {value:>8.1f} milhões USD")
 
 # =============================================================================
-# VISUALIZAÇÃO PREVISÃO FUTURA ARIMA
+# VISUALIZAÇÃO PREVISÃO FUTURA HOLT-WINTERS
 # =============================================================================
 
 plt.figure(figsize=(14, 8))
@@ -202,17 +196,17 @@ df['Valor']['2022-01-01':].plot(
 )
 
 # Previsão futura
-future_forecast_series.plot(
+future_forecast_series_hw.plot(
     linewidth=2,
-    label='Previsão ARIMA (Próximos 12 meses)',
-    color='red',
+    label='Previsão Holt-Winters (Próximos 12 meses)',
+    color='orange',
     linestyle='--',
     marker='o'
 )
 
 plt.axvline(x=df.index[-1], color='gray', linestyle=':', alpha=0.7, label='Fim Dados Reais')
 
-plt.title('Transações Correntes - Previsão Futura com ARIMA', fontsize=14, fontweight='bold')
+plt.title('Transações Correntes - Previsão Futura com Holt-Winters', fontsize=14, fontweight='bold')
 plt.xlabel('Data')
 plt.ylabel('US$ milhões')
 plt.legend()
@@ -220,20 +214,21 @@ plt.grid(True, alpha=0.3)
 plt.show()
 
 # =============================================================================
-# RESUMO ARIMA
+# RESUMO HOLT-WINTERS
 # =============================================================================
 
 print(f"\n" + "="*60)
-print("RESUMO - MODELO ARIMA")
+print("RESUMO - MODELO HOLT-WINTERS")
 print("="*60)
 
-print(f"• PARÂMETROS: {model_arima.order}")
-print(f"• PRECISÃO (MAPE): {mape_arima:.1f}%")
+print(f"• PARÂMETROS: Trend='add', Seasonal='add', Periods=12")
+print(f"• PRECISÃO (MAPE): {mape_hw:.1f}%")
 print(f"• TENDÊNCIA: Negativa")
 print(f"• SAZONALIDADE: Presente (anual)")
 print(f"• PREVISÃO: Déficit persistente")
 
-print(f"\nINSIGHTS ARIMA:")
-print("• Modelo captura padrões complexos de sazonalidade")
-print("• Adequado para séries com componentes sazonais")
-print("• Previsões consideram autocorrelação temporal")
+print(f"\nINSIGHTS HOLT-WINTERS:")
+print("• Modelo explícito para tendência e sazonalidade")
+print("• Adequado para séries com padrões sazonais estáveis")
+print("• Simples de interpretar e implementar")
+print("• Menos sensível a outliers que ARIMA")
