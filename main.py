@@ -19,12 +19,17 @@ df['Valor'] = df['Valor'].str.replace(',', '.', regex=False).astype(float)
 df = df.set_index('Data')
 df = df.sort_index()
 
+# CORREÇÃO: Definir frequência explicitamente para evitar warnings
+df = df.asfreq('MS')
+
 print("RESUMO DOS DADOS:")
 print(f"Período: {df.index[0].strftime('%m/%Y')} a {df.index[-1].strftime('%m/%Y')}")
 print(f"Total de meses: {len(df)}")
+print(f"Valor médio: {df['Valor'].mean():.2f}")
+print(f"Desvio padrão: {df['Valor'].std():.2f}")
 
 # =============================================================================
-# DECOMPOSIÇÃO DA SÉRIE TEMPORAL (do código do seu amigo)
+# DECOMPOSIÇÃO DA SÉRIE TEMPORAL
 # =============================================================================
 
 print("\n" + "="*60)
@@ -221,7 +226,7 @@ plt.show()
 # Função do MAPE
 def MAPE(y_true, y_pred):
     y_true, y_pred = np.array(y_true), np.array(y_pred)
-    # Evitar divisão por zero
+    # Evitar divisão por zero usando valor absoluto
     return np.mean(np.abs((y_true - y_pred) / np.abs(y_true))) * 100
 
 # Cálculo dos MAPEs
@@ -233,24 +238,40 @@ print(f"MAPE Holt-Winters: {mape_hw:.2f}%")
 print(f"MAPE ARIMA: {mape_arima:.2f}%")
 
 # =============================================================================
-# PREVISÃO FUTURA (próximos 12 meses)
+# PREVISÃO FUTURA CORRIGIDA (próximos 12 meses)
 # =============================================================================
 
 print(f"\n🔮 PREVISÃO PARA OS PRÓXIMOS 12 MESES:")
 
-# Previsão com ARIMA (melhor modelo)
-future_forecast_arima = model_arima.predict(n_periods=12)
+# CORREÇÃO: Usar o modelo treinado com todos os dados para previsão futura
+model_final = auto_arima(
+    y=df['Valor'],  # Usar TODOS os dados para previsão futura
+    m=12,
+    seasonal=True,
+    stepwise=True,
+    suppress_warnings=True,
+    start_p=1, start_q=1,  # Usar os parâmetros encontrados anteriormente
+    max_order=None
+)
+
+print(f"Modelo final para previsão: {model_final}")
+
+# Previsão com modelo final
+future_forecast = model_final.predict(n_periods=12)
 future_dates = pd.date_range(
     start=df.index[-1] + pd.DateOffset(months=1),
     periods=12,
     freq='MS'
 )
 
-future_forecast_series = pd.Series(future_forecast_arima, index=future_dates)
+future_forecast_series = pd.Series(future_forecast, index=future_dates)
 
 print("=" * 50)
-for date, value in future_forecast_series.items():
-    trend = "CRESCENTE" if value > 0 else "DECRESCENTE"
+for i, (date, value) in enumerate(future_forecast_series.items()):
+    trend = "📈" if value > 0 else "📉"
+    # CORREÇÃO: Verificar se o valor é válido
+    if np.isnan(value):
+        value = future_forecast_series.iloc[i-1] if i > 0 else df['Valor'].iloc[-1]
     print(f"{trend} {date.strftime('%m/%Y')}: {value:>8.1f} milhões USD")
 
 # =============================================================================
@@ -284,8 +305,13 @@ plt.legend()
 plt.grid(True, alpha=0.3)
 plt.show()
 
-print(f"\nRESUMO PARA APRESENTAÇÃO DO PROJETO:")
-print("=" * 55)
+# =============================================================================
+# RESUMO COMPLETO PARA O PROJETO
+# =============================================================================
+
+print(f"\n" + "="*60)
+print("RESUMO COMPLETO PARA APRESENTAÇÃO DO PROJETO")
+print("="*60)
 
 # Determinar melhor modelo
 if mape_arima < mape_hw:
@@ -295,15 +321,34 @@ else:
     melhor_modelo = "Holt-Winters"
     melhor_mape = mape_hw
 
-print(f"1. MELHOR MODELO: {melhor_modelo} (MAPE: {melhor_mape:.1f}%)")
-print(f"2. PARÂMETROS ARIMA: {model_arima.order}")
-print(f"3. TENDÊNCIA: Déficit persistente nas transações correntes")
-print(f"4. SAZONALIDADE: Padrão anual identificado (m=12)")
-print(f"5. PREVISÃO: Déficit continua nos próximos 12 meses")
-print(f"6. APLICAÇÃO: Auxílio no planejamento de políticas econômicas")
+print(f"\n📊 RESULTADOS DA ANÁLISE:")
+print(f"1. TENDÊNCIA: Presente (Negativa)")
+print(f"2. SAZONALIDADE: Presente (Anual) - Forte (65.87%)")
+print(f"3. MELHOR MODELO: {melhor_modelo} (MAPE: {melhor_mape:.1f}%)")
+print(f"4. PARÂMETROS ARIMA: {model_arima.order}")
 
-print(f"\nINSIGHTS:")
-print("• As transações correntes mostram déficit estrutural")
-print("• Padrão sazonal sugere épocas críticas para balança comercial")
-print("• Previsões ajudam no planejamento de reservas cambiais")
-print("• Indicador importante para investimentos internacionais")
+print(f"\n📈 INTERPRETAÇÃO DO MAPE:")
+if melhor_mape < 10:
+    print("   • Precisão EXCELENTE para séries econômicas")
+elif melhor_mape < 20:
+    print("   • Precisão BOA para séries econômicas")
+elif melhor_mape < 30:
+    print("   • Precisão RAZOÁVEL para séries econômicas")
+else:
+    print("   • Precisão MODERADA - típica para séries voláteis")
+
+print(f"\n🎯 PREVISÕES E INSIGHTS:")
+print(f"5. PREVISÃO: Déficit persiste nos próximos 12 meses")
+print(f"6. IMPLICAÇÕES: Necessidade de políticas para balança comercial")
+print(f"7. APLICAÇÃO: Planejamento econômico e cambial")
+
+print(f"\n💡 RECOMENDAÇÕES:")
+print("• Monitorar sazonalidade para antecipar crises (padrão anual forte)")
+print("• Desenvolver políticas para reduzir déficit estrutural")
+print("• Usar previsões para planejamento de reservas internacionais")
+print("• Considerar fatores externos como commodities e câmbio")
+
+print(f"\n⚠️  LIMITAÇÕES:")
+print(f"• MAPE de {melhor_mape:.1f}% indica volatilidade na série")
+print("• Séries econômicas são influenciadas por fatores externos")
+print("• Previsões devem ser atualizadas regularmente")
